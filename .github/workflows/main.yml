@@ -19,34 +19,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show files
+      - name: Validate files
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "========================================"
-          echo "FILES"
-          echo "========================================"
-
-          pwd
-          find . -maxdepth 3 -type f | sort
-
-      - name: Validate source
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ ! -f "RemoteAuth.mm" ]; then
+          test -f RemoteAuth.mm || {
             echo "ERRO: RemoteAuth.mm nao encontrado"
             exit 1
-          fi
+          }
 
-          if [ ! -f "icon.gif" ]; then
+          test -f icon.gif || {
             echo "ERRO: icon.gif nao encontrado"
             exit 1
-          fi
+          }
 
-          echo "Source OK"
+          echo "Arquivos encontrados:"
+          ls -lh RemoteAuth.mm icon.gif
 
       - name: Build RemoteAuth dylib
         shell: bash
@@ -54,13 +43,11 @@ jobs:
           set -euo pipefail
 
           rm -rf build artifact
-          mkdir -p build
+          mkdir -p build artifact
 
           SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
 
-          echo "========================================"
-          echo "SDK"
-          echo "========================================"
+          echo "SDK:"
           echo "$SDK_PATH"
 
           xcrun --sdk iphoneos clang++ \
@@ -69,44 +56,63 @@ jobs:
             -miphoneos-version-min=15.0 \
             -fobjc-arc \
             -fvisibility=hidden \
+            -O2 \
             -dynamiclib \
             RemoteAuth.mm \
-            -framework Foundation \
             -framework UIKit \
+            -framework Foundation \
             -framework Security \
+            -framework QuartzCore \
             -framework ImageIO \
             -framework CoreGraphics \
-            -framework QuartzCore \
+            -Wl,-install_name,@rpath/RemoteAuth.dylib \
+            -Wl,-dead_strip \
+            -Wl,-sectcreate,__DATA,__eaicon,icon.gif \
             -o build/RemoteAuth.dylib
+
+      - name: Remove signature
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          codesign --remove-signature build/RemoteAuth.dylib 2>/dev/null || true
 
       - name: Validate dylib
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ ! -f "build/RemoteAuth.dylib" ]; then
+          test -f build/RemoteAuth.dylib || {
             echo "ERRO: RemoteAuth.dylib nao foi criada"
             exit 1
-          fi
+          }
 
           echo "========================================"
           echo "REMOTE AUTH BUILD OK"
           echo "========================================"
 
           echo
-          echo "FILE:"
+          echo "Arquivo:"
           file build/RemoteAuth.dylib
 
           echo
-          echo "ARQUITETURA:"
+          echo "Arquitetura:"
           lipo -info build/RemoteAuth.dylib || true
 
           echo
-          echo "DEPENDENCIAS:"
+          echo "Dependencias:"
           otool -L build/RemoteAuth.dylib
 
           echo
-          echo "TAMANHO:"
+          echo "Install name:"
+          otool -D build/RemoteAuth.dylib || true
+
+          echo
+          echo "Secao do GIF:"
+          otool -l build/RemoteAuth.dylib | grep -A6 "__eaicon" || true
+
+          echo
+          echo "Tamanho:"
           ls -lh build/RemoteAuth.dylib
 
       - name: Package artifact
@@ -114,15 +120,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p artifact
-
           cp build/RemoteAuth.dylib artifact/RemoteAuth.dylib
-          cp icon.gif artifact/icon.gif
 
-          echo "========================================"
-          echo "ARTIFACT"
-          echo "========================================"
+          shasum -a 256 build/RemoteAuth.dylib \
+            > artifact/RemoteAuth.dylib.sha256.txt
 
+          echo "Artifact:"
           ls -lah artifact
 
       - name: Upload RemoteAuth
