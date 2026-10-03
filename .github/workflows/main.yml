@@ -3,11 +3,13 @@ name: Build RemoteAuth dylib
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     paths:
       - "RemoteAuth.mm"
       - "icon.gif"
       - "build.sh"
-      - ".github/workflows/build-remote-auth.yml"
+      - ".github/workflows/main.yml"
 
 jobs:
   build:
@@ -22,6 +24,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          echo "========================================"
+          echo "FILES"
+          echo "========================================"
+
           pwd
           find . -maxdepth 3 -type f | sort
 
@@ -40,21 +47,28 @@ jobs:
             exit 1
           }
 
+          echo "Source OK"
+
       - name: Build RemoteAuth dylib
         shell: bash
         run: |
           set -euo pipefail
 
+          rm -rf build artifact
           mkdir -p build
 
           SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
 
-          echo "SDK: $SDK_PATH"
+          echo "========================================"
+          echo "SDK"
+          echo "========================================"
+          echo "$SDK_PATH"
 
           xcrun --sdk iphoneos clang++ \
             -arch arm64 \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=15.0 \
+            -std=c++17 \
             -fobjc-arc \
             -fvisibility=hidden \
             -dynamiclib \
@@ -64,6 +78,7 @@ jobs:
             -framework Security \
             -framework ImageIO \
             -framework CoreGraphics \
+            -framework QuartzCore \
             -o build/RemoteAuth.dylib
 
       - name: Validate dylib
@@ -71,24 +86,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          test -f build/RemoteAuth.dylib
+          test -f build/RemoteAuth.dylib || {
+            echo "ERRO: RemoteAuth.dylib nao foi criada"
+            exit 1
+          }
 
-          echo "================================"
+          echo "========================================"
           echo "REMOTE AUTH BUILD OK"
-          echo "================================"
+          echo "========================================"
 
+          echo
+          echo "FILE:"
           file build/RemoteAuth.dylib
 
           echo
-          echo "Arquiteturas:"
+          echo "ARQUITETURA:"
           lipo -info build/RemoteAuth.dylib || true
 
           echo
-          echo "Dependencias:"
+          echo "DEPENDENCIAS:"
           otool -L build/RemoteAuth.dylib
 
           echo
-          echo "Tamanho:"
+          echo "TAMANHO:"
           ls -lh build/RemoteAuth.dylib
 
       - name: Package artifact
@@ -97,8 +117,15 @@ jobs:
           set -euo pipefail
 
           mkdir -p artifact
-          cp build/RemoteAuth.dylib artifact/
-          cp icon.gif artifact/
+
+          cp build/RemoteAuth.dylib artifact/RemoteAuth.dylib
+          cp icon.gif artifact/icon.gif
+
+          echo "========================================"
+          echo "ARTIFACT CONTENT"
+          echo "========================================"
+
+          ls -lah artifact
 
       - name: Upload RemoteAuth
         uses: actions/upload-artifact@v4
@@ -106,3 +133,4 @@ jobs:
           name: RemoteAuth-dylib
           path: artifact/
           if-no-files-found: error
+          retention-days: 30
