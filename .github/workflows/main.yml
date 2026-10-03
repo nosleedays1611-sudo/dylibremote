@@ -34,8 +34,7 @@ jobs:
             exit 1
           }
 
-          echo "Arquivos encontrados:"
-          ls -lh RemoteAuth.mm icon.gif
+          file RemoteAuth.mm icon.gif
 
       - name: Build RemoteAuth dylib
         shell: bash
@@ -47,8 +46,7 @@ jobs:
 
           SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
 
-          echo "SDK:"
-          echo "$SDK_PATH"
+          echo "SDK: $SDK_PATH"
 
           xcrun --sdk iphoneos clang++ \
             -arch arm64 \
@@ -70,50 +68,20 @@ jobs:
             -Wl,-sectcreate,__DATA,__eaicon,icon.gif \
             -o build/RemoteAuth.dylib
 
-      - name: Remove signature
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          codesign --remove-signature build/RemoteAuth.dylib 2>/dev/null || true
-
       - name: Validate dylib
         shell: bash
         run: |
           set -euo pipefail
 
-          test -f build/RemoteAuth.dylib || {
-            echo "ERRO: RemoteAuth.dylib nao foi criada"
-            exit 1
-          }
+          test -f build/RemoteAuth.dylib
 
-          echo "========================================"
-          echo "REMOTE AUTH BUILD OK"
-          echo "========================================"
-
-          echo
-          echo "Arquivo:"
           file build/RemoteAuth.dylib
 
-          echo
-          echo "Arquitetura:"
           lipo -info build/RemoteAuth.dylib || true
 
-          echo
-          echo "Dependencias:"
           otool -L build/RemoteAuth.dylib
 
-          echo
-          echo "Install name:"
-          otool -D build/RemoteAuth.dylib || true
-
-          echo
-          echo "Secao do GIF:"
-          otool -l build/RemoteAuth.dylib | grep -A6 "__eaicon" || true
-
-          echo
-          echo "Tamanho:"
-          ls -lh build/RemoteAuth.dylib
+          otool -l build/RemoteAuth.dylib | grep -A6 "__eaicon"
 
       - name: Package artifact
         shell: bash
@@ -125,7 +93,6 @@ jobs:
           shasum -a 256 build/RemoteAuth.dylib \
             > artifact/RemoteAuth.dylib.sha256.txt
 
-          echo "Artifact:"
           ls -lah artifact
 
       - name: Upload RemoteAuth
