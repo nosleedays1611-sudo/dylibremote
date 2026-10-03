@@ -1,0 +1,108 @@
+name: Build RemoteAuth dylib
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "RemoteAuth.mm"
+      - "icon.gif"
+      - "build.sh"
+      - ".github/workflows/build-remote-auth.yml"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show files
+        shell: bash
+        run: |
+          set -euo pipefail
+          pwd
+          find . -maxdepth 3 -type f | sort
+
+      - name: Validate source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f RemoteAuth.mm || {
+            echo "ERRO: RemoteAuth.mm nao encontrado"
+            exit 1
+          }
+
+          test -f icon.gif || {
+            echo "ERRO: icon.gif nao encontrado"
+            exit 1
+          }
+
+      - name: Build RemoteAuth dylib
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p build
+
+          SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
+
+          echo "SDK: $SDK_PATH"
+
+          xcrun --sdk iphoneos clang++ \
+            -arch arm64 \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=15.0 \
+            -fobjc-arc \
+            -fvisibility=hidden \
+            -dynamiclib \
+            RemoteAuth.mm \
+            -framework Foundation \
+            -framework UIKit \
+            -framework Security \
+            -framework ImageIO \
+            -framework CoreGraphics \
+            -o build/RemoteAuth.dylib
+
+      - name: Validate dylib
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f build/RemoteAuth.dylib
+
+          echo "================================"
+          echo "REMOTE AUTH BUILD OK"
+          echo "================================"
+
+          file build/RemoteAuth.dylib
+
+          echo
+          echo "Arquiteturas:"
+          lipo -info build/RemoteAuth.dylib || true
+
+          echo
+          echo "Dependencias:"
+          otool -L build/RemoteAuth.dylib
+
+          echo
+          echo "Tamanho:"
+          ls -lh build/RemoteAuth.dylib
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p artifact
+          cp build/RemoteAuth.dylib artifact/
+          cp icon.gif artifact/
+
+      - name: Upload RemoteAuth
+        uses: actions/upload-artifact@v4
+        with:
+          name: RemoteAuth-dylib
+          path: artifact/
+          if-no-files-found: error
